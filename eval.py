@@ -20,19 +20,19 @@ torch.backends.cudnn.benchmark = True
 def get_opts():
     parser = ArgumentParser()
     parser.add_argument('--root_dir', type=str,
-                        default='/home/ubuntu/data/nerf_example_data/nerf_synthetic/lego',
+                        default='/data/ybyang/nerf_data/phototourism_data/zjui_library_FULL',
                         help='root directory of dataset')
-    parser.add_argument('--dataset_name', type=str, default='blender',
+    parser.add_argument('--dataset_name', type=str, default='phototourism',
                         choices=['blender', 'phototourism'],
                         help='which dataset to validate')
-    parser.add_argument('--scene_name', type=str, default='test',
+    parser.add_argument('--scene_name', type=str, default='zjui_library',
                         help='scene name, used as output folder name')
-    parser.add_argument('--split', type=str, default='val',
+    parser.add_argument('--split', type=str, default='test',
                         choices=['val', 'test', 'test_train'])
     parser.add_argument('--img_wh', nargs="+", type=int, default=[800, 800],
                         help='resolution (img_w, img_h) of the image')
     # for phototourism
-    parser.add_argument('--img_downscale', type=int, default=1,
+    parser.add_argument('--img_downscale', type=int, default=8,
                         help='how much to downscale the images for phototourism dataset')
     parser.add_argument('--use_cache', default=False, action="store_true",
                         help='whether to use ray cache (make sure img_downscale is the same)')
@@ -44,13 +44,13 @@ def get_opts():
                         help='number of direction embedding frequencies')
     parser.add_argument('--N_samples', type=int, default=64,
                         help='number of coarse samples')
-    parser.add_argument('--N_importance', type=int, default=128,
+    parser.add_argument('--N_importance', type=int, default=,
                         help='number of additional fine samples')
     parser.add_argument('--use_disp', default=False, action="store_true",
                         help='use disparity depth sampling')
 
     # NeRF-W parameters
-    parser.add_argument('--N_vocab', type=int, default=100,
+    parser.add_argument('--N_vocab', type=int, default=1500,
                         help='''number of vocabulary (number of images) 
                                 in the dataset for nn.Embedding''')
     parser.add_argument('--encode_a', default=False, action="store_true",
@@ -67,7 +67,7 @@ def get_opts():
     parser.add_argument('--chunk', type=int, default=32*1024*4,
                         help='chunk size to split the input to avoid OOM')
 
-    parser.add_argument('--ckpt_path', type=str, required=True,
+    parser.add_argument('--ckpt_path', default="ckpts/zjui_library_scale8_nerfw/epoch=10.ckpt", type=str,
                         help='pretrained checkpoint path to load')
 
     parser.add_argument('--video_format', type=str, default='gif',
@@ -112,6 +112,7 @@ def batched_inference(models, embeddings,
 
 if __name__ == "__main__":
     args = get_opts()
+    
 
     kwargs = {'root_dir': args.root_dir,
               'split': args.split}
@@ -126,6 +127,10 @@ if __name__ == "__main__":
     embedding_xyz = PosEmbedding(args.N_emb_xyz-1, args.N_emb_xyz)
     embedding_dir = PosEmbedding(args.N_emb_dir-1, args.N_emb_dir)
     embeddings = {'xyz': embedding_xyz, 'dir': embedding_dir}
+    # os.environ['CUDA_VISIBLE_DEVICES'] = ', '.join([str(gpu) for gpu in [5]])
+    # print("visabale gpus are:" + str(os.environ['CUDA_VISIBLE_DEVICES']))
+    # device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+
     if args.encode_a:
         embedding_a = torch.nn.Embedding(args.N_vocab, args.N_a).cuda()
         load_ckpt(embedding_a, args.ckpt_path, model_name='embedding_a')
@@ -134,6 +139,7 @@ if __name__ == "__main__":
         embedding_t = torch.nn.Embedding(args.N_vocab, args.N_tau).cuda()
         load_ckpt(embedding_t, args.ckpt_path, model_name='embedding_t')
         embeddings['t'] = embedding_t
+
 
     nerf_coarse = NeRF('coarse',
                         in_channels_xyz=6*args.N_emb_xyz+3,
@@ -161,11 +167,15 @@ if __name__ == "__main__":
     # define testing poses and appearance index for phototourism
     if args.dataset_name == 'phototourism' and args.split == 'test':
         # define testing camera intrinsics (hard-coded, feel free to change)
-        dataset.test_img_w, dataset.test_img_h = args.img_wh
-        dataset.test_focal = dataset.test_img_w/2/np.tan(np.pi/6) # fov=60 degrees
-        dataset.test_K = np.array([[dataset.test_focal, 0, dataset.test_img_w/2],
-                                   [0, dataset.test_focal, dataset.test_img_h/2],
-                                   [0,                  0,                    1]])
+        target_idx = 55
+        # [3,49,55,37]
+        
+        # dataset.test_focal = dataset.test_img_w/2/np.tan(np.pi/6) # fov=60 degrees
+        dataset.test_K = dataset.Ks[target_idx] 
+        dataset.test_img_w, dataset.test_img_h = int(dataset.test_K[0,2] * 2), int(dataset.test_K[1,2] * 2)
+        # np.array([[dataset.test_focal, 0, dataset.test_img_w/2],
+        #                            [0, dataset.test_focal, dataset.test_img_h/2],
+        #                            [0,                  0,                    1]])
         if scene == 'brandenburg_gate':
             # select appearance embedding, hard-coded for each scene
             dataset.test_appearance_idx = 1123 # 85572957_6053497857.jpg
@@ -175,6 +185,19 @@ if __name__ == "__main__":
             dz = np.linspace(0, 0.5, N_frames)
             # define poses
             dataset.poses_test = np.tile(dataset.poses_dict[1123], (N_frames, 1, 1))
+            for i in range(N_frames):
+                dataset.poses_test[i, 0, 3] += dx[i]
+                dataset.poses_test[i, 1, 3] += dy[i]
+                dataset.poses_test[i, 2, 3] += dz[i]
+        elif scene == 'zjui_library_FULL':
+            # select appearance embedding, hard-coded for each scene
+            dataset.test_appearance_idx = target_idx # 85572957_6053497857.jpg
+            N_frames = 30*2
+            dx = np.linspace(0, 0.02, N_frames)
+            dy = np.linspace(0, -0.1, N_frames)
+            dz = np.linspace(0, 0.3, N_frames)
+            # define poses
+            dataset.poses_test = np.tile(dataset.poses_dict[target_idx], (N_frames, 1, 1))
             for i in range(N_frames):
                 dataset.poses_test[i, 0, 3] += dx[i]
                 dataset.poses_test[i, 1, 3] += dy[i]

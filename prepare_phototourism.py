@@ -7,9 +7,9 @@ import pickle
 def get_opts():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--root_dir', type=str, required=True,
+    parser.add_argument('--root_dir',default="/data/ybyang/nerf_data/phototourism_data/zjui_library_FULL", type=str,
                         help='root directory of dataset')
-    parser.add_argument('--img_downscale', type=int, default=1,
+    parser.add_argument('--img_downscale', type=int, default=8,
                         help='how much to downscale the images for phototourism dataset')
 
     return parser.parse_args()

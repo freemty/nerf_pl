@@ -39,6 +39,21 @@ class PhototourismDataset(Dataset):
         self.white_back = False
 
     def read_meta(self):
+        if True:
+            img_dir_list = os.listdir(os.path.join(self.root_dir, 'dense', 'images'))
+            tsv_path = os.path.join(self.root_dir, "zjui_library.tsv")
+
+            lines = []
+            with open(tsv_path, 'w') as f:
+                lines.append('\t'.join(['filename','id','split','dataset']) + '\n')
+                for i, path in enumerate(img_dir_list):
+                    if np.random.randint(1, 10) > 8:
+                        spilt = 'test'
+                    else:
+                        spilt = 'train'
+                    lines.append('\t'.join([path, str(i), spilt, 'zjui_library']) + '\n')
+                f.writelines(lines)
+
         # read all files in the tsv first (split to train and test later)
         tsv = glob.glob(os.path.join(self.root_dir, '*.tsv'))[0]
         self.scene_name = os.path.basename(tsv)[:-4]
@@ -75,13 +90,14 @@ class PhototourismDataset(Dataset):
             camdata = read_cameras_binary(os.path.join(self.root_dir, 'dense/sparse/cameras.bin'))
             for id_ in self.img_ids:
                 K = np.zeros((3, 3), dtype=np.float32)
-                cam = camdata[id_]
-                img_w, img_h = int(cam.params[2]*2), int(cam.params[3]*2)
+                cam_id = imdata[id_].camera_id
+                cam = camdata[cam_id]
+                img_w, img_h = int(cam.params[1]*2), int(cam.params[2]*2)
                 img_w_, img_h_ = img_w//self.img_downscale, img_h//self.img_downscale
                 K[0, 0] = cam.params[0]*img_w_/img_w # fx
                 K[1, 1] = cam.params[1]*img_h_/img_h # fy
-                K[0, 2] = cam.params[2]*img_w_/img_w # cx
-                K[1, 2] = cam.params[3]*img_h_/img_h # cy
+                K[0, 2] = cam.params[1]*img_w_/img_w # cx
+                K[1, 2] = cam.params[2]*img_h_/img_h # cy
                 K[2, 2] = 1
                 self.Ks[id_] = K
 
